@@ -1,3 +1,5 @@
+[Read this in Chinese (阅读中文版本)](README_zh.md)
+
 # Fruition: Free, Open Source Toolkit For Customizing Your Notion Pages
 
 * Use cases: perfect for your portfolio, blog, landing page, and business site
@@ -7,5 +9,5 @@
 For step-by-step setup instructions, visit https://fruitionsite.com
 
 This repo has 2 independent parts:
-1. [worker.js](https://github.com/stephenou/fruitionsite/blob/master/worker.js) is the Cloudflare Worker script
+1. [worker.js](https://github.com/UE-DND/fruitionsite/blob/master/worker.js) is the Cloudflare Worker script
 2. everything else is a React app that helps generate the Worker script via a UI.

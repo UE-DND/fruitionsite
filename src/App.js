@@ -1,9 +1,23 @@
-import React, { useState, useRef } from "react";
-import { Button, Collapse, InputAdornment, TextField } from "@material-ui/core";
+import React, { useState, useRef, useMemo, useEffect } from "react";
+import {
+  Button,
+  Collapse,
+  InputAdornment,
+  TextField,
+  ThemeProvider,
+  createTheme,
+  CssBaseline,
+  useMediaQuery,
+  Grid,
+  Box
+} from "@material-ui/core";
 import code from "./code";
 import "./styles.css";
+import { useLanguage } from "./i18n/LanguageContext";
+import LanguageSwitcher from "./i18n/LanguageSwitcher";
+import ThemeSwitcher from "./ThemeSwitcher";
 
-const DEFAULT_DOMAIN = "fruitionsite.com";
+const DEFAULT_DOMAIN = "";
 const DEFAULT_NOTION_URL =
   "https://stephenou.notion.site/771ef38657244c27b9389734a9cbff44";
 
@@ -36,6 +50,44 @@ export default function App() {
   const [customScript, setCustomScript] = useState("");
   const [optional, setOptional] = useState(false);
   const [copied, setCopied] = useState(false);
+
+  const { t } = useLanguage();
+
+  // --- Simplified Theme State and Logic --- 
+  // Detect system preference
+  const prefersDarkMode = useMediaQuery('(prefers-color-scheme: dark)');
+  
+  // State for the actual theme type being applied (light or dark)
+  const [currentThemeType, setCurrentThemeType] = useState(() => {
+    const savedTheme = localStorage.getItem('themeType'); // Read saved preference
+    if (savedTheme) {
+      return savedTheme; // Use saved preference if exists
+    } 
+    // Otherwise, follow system preference initially
+    return prefersDarkMode ? 'dark' : 'light'; 
+  });
+
+  // Memoize the theme creation based on the currentThemeType
+  const theme = useMemo(
+    () =>
+      createTheme({
+        palette: {
+          type: currentThemeType,
+        },
+      }),
+    [currentThemeType],
+  );
+
+  // Function to toggle theme directly between light and dark
+  const toggleTheme = () => {
+    const nextThemeType = currentThemeType === 'light' ? 'dark' : 'light';
+    setCurrentThemeType(nextThemeType);
+    localStorage.setItem('themeType', nextThemeType); // Save user's choice
+  };
+  // --- End Simplified Theme State and Logic ---
+
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+
   const handleMyDomain = e => {
     setMyDomain(e.target.value);
     setCopied(false);
@@ -114,31 +166,54 @@ export default function App() {
     document.execCommand("copy");
     setCopied(true);
   };
-  return (
-    <section style={{ maxWidth: 666 }}>
+
+  const CodeSection = (
+    <Grid item xs={12} md={6}>
+      {noError ? (
+        <TextField
+          fullWidth
+          margin="normal"
+          rows={20}
+          multiline
+          inputRef={textarea}
+          value={script}
+          variant="outlined"
+          label={t.generatedCode}
+          style={{ height: 'calc(100% - 16px)' }}
+        />
+      ) : (
+        <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', border: `1px dashed ${theme.palette.text.disabled}`, borderRadius: theme.shape.borderRadius, marginTop: '16px' }}>
+          {t.codeWillAppear}
+        </div>
+      )}
+    </Grid>
+  );
+
+  const ControlsSection = (
+    <Grid item xs={12} md={6}>
       <TextField
         fullWidth
-        helperText={myDomainHelperText}
-        label="Your Domain (e.g. example.org)"
+        helperText={myDomainHelperText ? t.invalidDomain : undefined}
+        label={t.yourDomain}
         onChange={handleMyDomain}
         margin="normal"
-        placeholder={DEFAULT_DOMAIN}
+        placeholder={t.yourDomainPlaceholder}
         value={myDomain}
         variant="outlined"
       />
       <TextField
         fullWidth
-        helperText={notionUrlHelperText}
-        label={`Notion URL for ${domain}`}
+        helperText={notionUrlHelperText ? t.invalidNotionUrl : undefined}
+        label={t.notionURLFor}
         margin="normal"
         onChange={handleNotionUrl}
-        placeholder={DEFAULT_NOTION_URL}
+        placeholder={t.notionURLPlaceholder}
         value={notionUrl}
         variant="outlined"
       />
       {slugs.map(([customUrl, notionPageUrl], index) => {
         return (
-          <section>
+          <div key={`slug-${index}`} style={{ marginBottom: theme.spacing(2) }}>
             <TextField
               fullWidth
               InputProps={{
@@ -146,20 +221,18 @@ export default function App() {
                   <InputAdornment position="start">{`${domain}/`}</InputAdornment>
                 )
               }}
-              key="key"
-              label="Pretty Link"
-              margin="normal"
-              placeholder="about"
+              label={t.prettyLink}
+              margin="dense"
+              placeholder={t.prettyLinkPlaceholder}
               onChange={e => handleCustomURL(e.target.value, index)}
               value={customUrl}
               variant="outlined"
             />
             <TextField
               fullWidth
-              label={`Notion URL for ${domain}/${customUrl || "about"}`}
-              key="value"
-              margin="normal"
-              placeholder={DEFAULT_NOTION_URL}
+              label={`${t.notionURLForLink} ${domain}/${customUrl || t.prettyLinkPlaceholder}`}
+              margin="dense"
+              placeholder={t.notionURLPlaceholder}
               onChange={e => handleNotionPageURL(e.target.value, index)}
               value={notionPageUrl}
               variant="outlined"
@@ -169,36 +242,36 @@ export default function App() {
               variant="outlined"
               color="secondary"
               size="small"
+              style={{ marginTop: theme.spacing(1) }}
             >
-              Delete this pretty link
+              {t.deletePrettyLink}
             </Button>
-          </section>
+          </div>
         );
       })}
-      <section>
+      <div style={{ marginTop: theme.spacing(2), marginBottom: theme.spacing(1) }}>
         <Button
           onClick={addSlug}
           size="small"
           variant="outlined"
           color="primary"
+          style={{ marginRight: theme.spacing(1) }}
         >
-          Add a pretty link
+          {t.addPrettyLink}
         </Button>
-      </section>
-      <section>
         <Button
           onClick={handleOptional}
           size="small"
           variant="outlined"
           color="primary"
         >
-          Toggle Style And Script Settings
+          {t.toggleSettings}
         </Button>
-      </section>
+      </div>
       <Collapse in={optional} timeout="auto" unmountOnExit>
         <TextField
           fullWidth
-          label="Page Title"
+          label={t.pageTitle}
           margin="normal"
           onChange={handlePageTitle}
           value={pageTitle}
@@ -206,7 +279,7 @@ export default function App() {
         />
         <TextField
           fullWidth
-          label="Page Description"
+          label={t.pageDescription}
           margin="normal"
           onChange={handlePageDescription}
           value={pageDescription}
@@ -214,26 +287,26 @@ export default function App() {
         />
         <TextField
           fullWidth
-          label="Custom Google Font"
+          label={t.customGoogleFont}
           margin="normal"
-          placeholder="Open Sans"
+          placeholder={t.customGoogleFontPlaceholder}
           onChange={handleGoogleFont}
           value={googleFont}
           variant="outlined"
         />
         <TextField
           fullWidth
-          label="Paste Your Custom Script"
+          label={t.customScript}
           margin="normal"
           multiline
-          placeholder="e.g. Google Analytics"
+          placeholder={t.customScriptPlaceholder}
           onChange={handleCustomScript}
           rows={2}
           value={customScript}
           variant="outlined"
         />
       </Collapse>
-      <section>
+      <div style={{ marginTop: theme.spacing(3) }}>
         <Button
           disabled={!noError}
           variant="contained"
@@ -241,24 +314,45 @@ export default function App() {
           disableElevation
           onClick={copy}
         >
-          {copied ? "Copied!" : "Copy the code"}
+          {copied ? t.copied : t.copyCode}
         </Button>
-      </section>
-      {noError ? (
-        <>
-          <TextField
-            fullWidth
-            margin="normal"
-            rowsMax={5}
-            multiline
-            inputRef={textarea}
-            value={script}
-            variant="outlined"
-          />
-        </>
-      ) : (
-        ""
-      )}
-    </section>
+      </div>
+    </Grid>
+  );
+
+  return (
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      <Box 
+        display="flex" 
+        alignItems="center"
+        justifyContent="flex-end" 
+        p={1}
+        borderBottom={`1px solid ${theme.palette.divider}`}
+      >
+        <ThemeSwitcher 
+          currentThemeType={currentThemeType} 
+          toggleTheme={toggleTheme} 
+        />
+        <LanguageSwitcher />
+      </Box>
+      <Grid 
+        container 
+        spacing={3} 
+        style={{ padding: '20px' }}
+      >
+        {isMobile ? (
+          <>
+            {ControlsSection}
+            {CodeSection}
+          </>
+        ) : (
+          <>
+            {CodeSection}
+            {ControlsSection}
+          </>
+        )}
+      </Grid>
+    </ThemeProvider>
   );
 }
