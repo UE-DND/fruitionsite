@@ -18,12 +18,19 @@ const translations = {
     copied: "Copied!",
 
     // Optional settings
-    pageTitle: "Page Title",
-    pageDescription: "Page Description",
+    pageTitle: "SEO Page Title",
+    pageDescription: "SEO Page Description",
     customGoogleFont: "Custom Google Font",
     customGoogleFontPlaceholder: "Open Sans",
     customScript: "Paste Your Custom Script",
     customScriptPlaceholder: "e.g. Google Analytics",
+    hideNotionWatermarkLabel: "Hide Notion Watermark",
+
+    // New setting for history manipulation
+    enablePrettyUrlLabel: "Enable Pretty URLs (Client-side Slugs)",
+    enablePrettyUrlTooltip: "Updates browser URL to show slugs like '/about' after page loads and during navigation. Disable if it causes issues.",
+    enableNavAndApiLabel: "Enable Browser History Nav & API Proxy",
+    enableNavAndApiTooltip: "Handles browser back/forward buttons and proxies API requests. Disable if history navigation or specific Notion features break.",
 
     // Code display
     generatedCode: "Generated Cloudflare Worker Script",
@@ -48,19 +55,26 @@ const translations = {
     notionURLForLink: "目标 Notion 页面 (对应路径: /",
 
     // Buttons
-    addPrettyLink: "添加友好链接",
-    deletePrettyLink: "删除此友好链接",
+    addPrettyLink: "添加自定义slug链接",
+    deletePrettyLink: "删除此自定义slug链接",
     toggleSettings: "切换样式和脚本设置",
     copyCode: "复制代码",
     copied: "已复制！",
 
     // Optional settings
-    pageTitle: "页面标题",
-    pageDescription: "页面描述",
+    pageTitle: "SEO页面标题",
+    pageDescription: "SEO页面描述",
     customGoogleFont: "自定义 Google 字体",
     customGoogleFontPlaceholder: "Open Sans",
     customScript: "粘贴您的自定义脚本",
     customScriptPlaceholder: "例如: Google Analytics 代码",
+    hideNotionWatermarkLabel: "隐藏 Notion 水印",
+
+    // New setting for history manipulation
+    enablePrettyUrlLabel: "启用简洁 URL (客户端 Slug)",
+    enablePrettyUrlTooltip: "页面加载和导航时，将浏览器地址栏更新为简洁路径（如 /about）。如果导致问题请禁用。",
+    enableNavAndApiLabel: "启用浏览器历史导航与 API 代理",
+    enableNavAndApiTooltip: "处理浏览器前进/后退按钮并代理 API 请求。如果历史导航或某些 Notion 功能异常，请禁用此项。",
 
     // Code display
     generatedCode: "生成的 Cloudflare Worker 脚本",

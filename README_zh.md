@@ -8,6 +8,5 @@
 
 详细的设置步骤，请访问 https://fruitionsite.com
 
-此代码仓库包含 2 个独立部分：
-1.  [worker.js](https://github.com/UE-DND/fruitionsite/blob/master/worker.js) 是 Cloudflare Worker 脚本
-2.  其余部分是一个 React 应用程序，用于通过 UI 帮助生成 Worker 脚本。 
+此代码仓库包含 1 个独立部分：
+1.  一个 React 应用程序，用于通过 UI 帮助生成 Worker 脚本。 

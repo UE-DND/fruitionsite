@@ -17,9 +17,14 @@ export default function code(data) {
         pageDescription,
         googleFont,
         customScript,
-    } = data;
-    let url = myDomain.replace('https://', '').replace('http://', '');
-    if (url.slice(-1) === '/') url = url.slice(0, url.length - 1);
+        hideWatermark,
+        enablePrettyUrl = false,
+        enableNavAndApi = false
+    } = data || {};
+    // Ensure myDomain is treated as a string and handle potential errors gracefully
+    let safeDomain = String(myDomain || '');
+    let url = safeDomain.replace('https://', '').replace('http://', '');
+    if (url.endsWith('/')) url = url.slice(0, -1); // Use endsWith for clarity
 
     return `  /* CONFIGURATION STARTS HERE */
   
@@ -51,7 +56,20 @@ ${slugs
   /* Step 5: enter any custom scripts you'd like */
   const CUSTOM_SCRIPT = \`${customScript || ''}\`;
   
+  /* Step 6: decide whether to hide Notion watermark (true/false) */
+  const HIDE_WATERMARK = ${hideWatermark};
+  
+  /* Step 7: enable pretty URLs (client-side slug) */
+  const ENABLE_PRETTY_URL = ${enablePrettyUrl};
+  
+  /* Step 8: enable history navigation and API proxying */
+  const ENABLE_NAV_AND_API = ${enableNavAndApi};
+  
   /* CONFIGURATION ENDS HERE */
+  
+  const watermarkCss = HIDE_WATERMARK
+    ? '#notion-app > div > div:nth-child(1) > div > div:nth-child(1) > header > div > div.notion-topbar > div > div:nth-child(3) > div:nth-child(2) > div:nth-child(4) { display: none !important; }'
+    : '';
   
   const PAGE_TO_SLUG = {};
   const slugs = [];
@@ -102,12 +120,22 @@ ${slugs
     }
   }
   
+  // Helper function to determine target host
+  function getTargetHost(url) {
+    if (url.pathname.startsWith('/primus-v8')) {
+      return 'msgstore.www.notion.so';
+    }
+    // Default to www.notion.so for API, JS, and main page fetches
+    return 'www.notion.so';
+  }
+
   async function fetchAndApply(request) {
     if (request.method === 'OPTIONS') {
       return handleOptions(request);
     }
-    let url = new URL(request.url);
-    url.hostname = 'www.notion.so';
+    const url = new URL(request.url);
+
+    // Handle static/special paths first
     if (url.pathname === '/robots.txt') {
       return new Response('Sitemap: https://' + MY_DOMAIN + '/sitemap.xml');
     }
@@ -116,46 +144,85 @@ ${slugs
       response.headers.set('content-type', 'application/xml');
       return response;
     }
-    let response;
+
+    // Handle known slugs - Redirect on MY_DOMAIN
+    const requestedSlug = url.pathname.slice(1);
+    // Check only if the path doesn't look like a Notion internal ID
+    if (!url.pathname.match(/^[0-9a-f]{32}$/) && SLUG_TO_PAGE[requestedSlug] !== undefined) {
+        const pageId = SLUG_TO_PAGE[requestedSlug];
+        return Response.redirect('https://' + MY_DOMAIN + '/' + pageId, 301);
+    }
+
+    // Determine the target host
+    const targetHost = getTargetHost(url);
+
+    // Create the target URL
+    let fetchUrl = new URL(request.url);
+    fetchUrl.hostname = targetHost;
+
+    // Specific handling for Notion JS files (fetch from www, don't modify)
     if (url.pathname.startsWith('/app') && url.pathname.endsWith('js')) {
-      response = await fetch(url.toString());
-      let body = await response.text();
-      response = new Response(body.replace(/www.notion.so/g, MY_DOMAIN).replace(/notion.so/g, MY_DOMAIN), response);
-      response.headers.set('Content-Type', 'application/x-javascript');
-      return response;
-    } else if ((url.pathname.startsWith('/api'))) {
-      // Forward API
-      response = await fetch(url.toString(), {
-        body: url.pathname.startsWith('/api/v3/getPublicPageData') ? null : request.body,
-        headers: {
-          'content-type': 'application/json;charset=UTF-8',
-          'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_12_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.163 Safari/537.36'
-        },
-        method: 'POST',
-      });
-      response = new Response(response.body, response);
-      response.headers.set('Access-Control-Allow-Origin', '*');
-      return response;
-    } else if (slugs.indexOf(url.pathname.slice(1)) > -1) {
-      const pageId = SLUG_TO_PAGE[url.pathname.slice(1)];
-      return Response.redirect('https://' + MY_DOMAIN + '/' + pageId, 301);
-    } else {
-      response = await fetch(url.toString(), {
+        fetchUrl.hostname = 'www.notion.so'; // Ensure it's from www
+        let jsResponse = await fetch(fetchUrl.toString());
+        // Return as-is, DO NOT pass to appendJavascript
+        return new Response(jsResponse.body, jsResponse);
+    }
+
+    // Specific handling for API requests (fetch from www, POST)
+    if (url.pathname.startsWith('/api')) {
+        fetchUrl.hostname = 'www.notion.so'; // Ensure it's from www
+        let apiResponse = await fetch(fetchUrl.toString(), {
+             body: url.pathname.startsWith('/api/v3/getPublicPageData') ? null : request.body,
+             headers: {
+               'content-type': 'application/json;charset=UTF-8',
+               'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_12_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.163 Safari/537.36'
+             },
+             method: 'POST',
+        });
+        apiResponse = new Response(apiResponse.body, apiResponse);
+        apiResponse.headers.set('Access-Control-Allow-Origin', '*');
+        // Return as-is, DO NOT pass to appendJavascript
+        return apiResponse;
+    }
+
+    // General proxying for all other requests (HTML page, images, fonts, msgstore/primus)
+    let response = await fetch(fetchUrl.toString(), {
         body: request.body,
         headers: request.headers,
         method: request.method,
-      });
-      response = new Response(response.body, response);
-      response.headers.delete('Content-Security-Policy');
-      response.headers.delete('X-Content-Security-Policy');
+    });
+
+    // Make response mutable for header changes
+    response = new Response(response.body, response);
+
+    // Check if the fetch was successful before proceeding
+    if (!response.ok) {
+        // Return the error response directly
+        return response;
     }
-  
-    return appendJavascript(response, SLUG_TO_PAGE);
+
+    // Remove CSP headers (might be necessary for injected scripts/styles)
+    response.headers.delete('Content-Security-Policy');
+    response.headers.delete('X-Content-Security-Policy');
+
+    // Only rewrite successful HTML responses
+    const contentType = response.headers.get('content-type');
+    // Return the response directly, without rewriting.
+    // If the page loads now (even if broken), HTMLRewriter is the issue.
+    return response;
+
+    // Original logic (commented out for diagnosis):
+    // if (contentType && contentType.trim().toLowerCase().startsWith('text/html')) {
+    //     return appendJavascript(response, SLUG_TO_PAGE);
+    // } else {
+    //     // Return other proxied responses (e.g., msgstore, images) directly
+    //     return response;
+    // }
   }
   
   class MetaRewriter {
     element(element) {
-      if (PAGE_TITLE !== '') {
+      if (PAGE_TITLE) {
         if (element.getAttribute('property') === 'og:title'
           || element.getAttribute('name') === 'twitter:title') {
           element.setAttribute('content', PAGE_TITLE);
@@ -164,7 +231,7 @@ ${slugs
           element.setInnerContent(PAGE_TITLE);
         }
       }
-      if (PAGE_DESCRIPTION !== '') {
+      if (PAGE_DESCRIPTION) {
         if (element.getAttribute('name') === 'description'
           || element.getAttribute('property') === 'og:description'
           || element.getAttribute('name') === 'twitter:description') {
@@ -189,18 +256,11 @@ ${slugs
           html: true
         });
       }
-      element.append(\`<style>
-      div.notion-topbar > div > div:nth-child(3) { display: none !important; }
-      div.notion-topbar > div > div:nth-child(4) { display: none !important; }
-      div.notion-topbar > div > div:nth-child(5) { display: none !important; }
-      div.notion-topbar > div > div:nth-child(6) { display: none !important; }
-      div.notion-topbar-mobile > div:nth-child(3) { display: none !important; }
-      div.notion-topbar-mobile > div:nth-child(4) { display: none !important; }
-      div.notion-topbar > div > div:nth-child(1n).toggle-mode { display: block !important; }
-      div.notion-topbar-mobile > div:nth-child(1n).toggle-mode { display: block !important; }
-      </style>\`, {
-        html: true
-      })
+      if (watermarkCss) {
+        element.append(\`<style>\n          \${watermarkCss}\n        </style>\`, {
+          html: true
+        });
+      }
     }
   }
   
@@ -209,105 +269,30 @@ ${slugs
       this.SLUG_TO_PAGE = SLUG_TO_PAGE;
     }
     element(element) {
-      element.append(\`<div style="display:none">Powered by <a href="http://fruitionsite.com">Fruition</a></div>
-      <script>
-      window.CONFIG.domainBaseUrl = 'https://\${MY_DOMAIN}';
-      const SLUG_TO_PAGE = \${JSON.stringify(this.SLUG_TO_PAGE)};
-      const PAGE_TO_SLUG = {};
-      const slugs = [];
+      element.append(\`<div style=\"display:none\">Powered by <a href=\"http://fruitionsite.com\">Fruition</a></div>\`, { html: true });
+      element.append(\`<script>\n      const SLUG_TO_PAGE = \${JSON.stringify(this.SLUG_TO_PAGE)};\n      const PAGE_TO_SLUG = {};\n      const slugs = [];
       const pages = [];
-      const el = document.createElement('div');
-      let redirected = false;
-      Object.keys(SLUG_TO_PAGE).forEach(slug => {
-        const page = SLUG_TO_PAGE[slug];
-        slugs.push(slug);
-        pages.push(page);
-        PAGE_TO_SLUG[page] = slug;
-      });
-      function getPage() {
-        return location.pathname.slice(-32);
-      }
-      function getSlug() {
-        return location.pathname.slice(1);
-      }
-      function updateSlug() {
-        const slug = PAGE_TO_SLUG[getPage()];
-        if (slug != null) {
-          history.replaceState(history.state, '', '/' + slug);
-        }
-      }
-      function onDark() {
-        el.innerHTML = '<div title="Change to Light Mode" style="margin-left: auto; margin-right: 14px; min-width: 0px;"><div role="button" tabindex="0" style="user-select: none; transition: background 120ms ease-in 0s; cursor: pointer; border-radius: 44px;"><div style="display: flex; flex-shrink: 0; height: 14px; width: 26px; border-radius: 44px; padding: 2px; box-sizing: content-box; background: rgb(46, 170, 220); transition: background 200ms ease 0s, box-shadow 200ms ease 0s;"><div style="width: 14px; height: 14px; border-radius: 44px; background: white; transition: transform 200ms ease-out 0s, background 200ms ease-out 0s; transform: translateX(12px) translateY(0px);"></div></div></div></div>';
-        document.body.classList.add('dark');
-        __console.environment.ThemeStore.setState({ mode: 'dark' });
-      };
-      function onLight() {
-        el.innerHTML = '<div title="Change to Dark Mode" style="margin-left: auto; margin-right: 14px; min-width: 0px;"><div role="button" tabindex="0" style="user-select: none; transition: background 120ms ease-in 0s; cursor: pointer; border-radius: 44px;"><div style="display: flex; flex-shrink: 0; height: 14px; width: 26px; border-radius: 44px; padding: 2px; box-sizing: content-box; background: rgba(135, 131, 120, 0.3); transition: background 200ms ease 0s, box-shadow 200ms ease 0s;"><div style="width: 14px; height: 14px; border-radius: 44px; background: white; transition: transform 200ms ease-out 0s, background 200ms ease-out 0s; transform: translateX(0px) translateY(0px);"></div></div></div></div>';
-        document.body.classList.remove('dark');
-        __console.environment.ThemeStore.setState({ mode: 'light' });
-      }
-      function toggle() {
-        if (document.body.classList.contains('dark')) {
-          onLight();
-        } else {
-          onDark();
-        }
-      }
-      function addDarkModeButton(device) {
-        const nav = device === 'web' ? document.querySelector('.notion-topbar').firstChild : document.querySelector('.notion-topbar-mobile');
-        el.className = 'toggle-mode';
-        el.addEventListener('click', toggle);
-        nav.appendChild(el);
-        onLight();
-      }
-      const observer = new MutationObserver(function() {
-        if (redirected) return;
-        const nav = document.querySelector('.notion-topbar');
+      let redirected = false;\n      if (\${enablePrettyUrl}) {\n        function getPage() {\\n        return location.pathname.slice(-32);\\n      }\n      function getSlug() {\\n        return location.pathname.slice(1);\\n      }\n      function updateSlug() {\\n        const slug = PAGE_TO_SLUG[getPage()];\\n        if (slug != null) {\\n          history.replaceState(history.state, '', '/' + slug);\\n        }\\n      }\n      const observer = new MutationObserver(function() {\\n        if (redirected) return;\\n        const nav = document.querySelector('.notion-topbar');
         const mobileNav = document.querySelector('.notion-topbar-mobile');
         if (nav && nav.firstChild && nav.firstChild.firstChild
-          || mobileNav && mobileNav.firstChild) {
-          redirected = true;
-          updateSlug();
-          addDarkModeButton(nav ? 'web' : 'mobile');
-          const onpopstate = window.onpopstate;
+          || mobileNav && mobileNav.firstChild) {\\n          redirected = true;\\n          updateSlug();\\n          const onpopstate = window.onpopstate;
           window.onpopstate = function() {
-            if (slugs.includes(getSlug())) {
-              const page = SLUG_TO_PAGE[getSlug()];
-              if (page) {
-                history.replaceState(history.state, 'bypass', '/' + page);
-              }
-            }
             onpopstate.apply(this, [].slice.call(arguments));
             updateSlug();
           };
-        }
-      });
-      observer.observe(document.querySelector('#notion-app'), {
-        childList: true,
-        subtree: true,
-      });
-      const replaceState = window.history.replaceState;
-      window.history.replaceState = function(state) {
-        if (arguments[1] !== 'bypass' && slugs.includes(getSlug())) return;
-        return replaceState.apply(window.history, arguments);
-      };
-      const pushState = window.history.pushState;
-      window.history.pushState = function(state) {
-        const dest = new URL(location.protocol + location.host + arguments[2]);
-        const id = dest.pathname.slice(-32);
-        if (pages.includes(id)) {
-          arguments[2] = '/' + PAGE_TO_SLUG[id];
-        }
-        return pushState.apply(window.history, arguments);
-      };
-      const open = window.XMLHttpRequest.prototype.open;
-      window.XMLHttpRequest.prototype.open = function() {
-        arguments[1] = arguments[1].replace('\${MY_DOMAIN}', 'www.notion.so');
-        return open.apply(this, [].slice.call(arguments));
-      };
-    </script>\${CUSTOM_SCRIPT}\`, {
-        html: true
-      });
+        }\\n      });
+        observer.observe(document.querySelector('#notion-app'), {\\n        childList: true,\\n        subtree: true,\\n      });
+        const replaceState = window.history.replaceState;
+        window.history.replaceState = function(state) {\\n        if (arguments[1] !== 'bypass' && slugs.includes(getSlug())) return;\\n        return replaceState.apply(window.history, arguments);\\n      };
+        const pushState = window.history.pushState;
+        window.history.pushState = function(state) {\\n        const dest = new URL(location.protocol + location.host + arguments[2]);
+        const id = dest.pathname.slice(-32);\\n        if (pages.includes(id)) {\\n          arguments[2] = '/' + PAGE_TO_SLUG[id];\\n        }\\n        return pushState.apply(window.history, arguments);\\n      };
+      }
+    </script>\`, { html: true });
+
+      if (CUSTOM_SCRIPT) {
+         element.append(\`<script>\${CUSTOM_SCRIPT}</script>\`, { html: true });
+      }
     }
   }
   

@@ -8,6 +8,5 @@
 
 For step-by-step setup instructions, visit https://fruitionsite.com
 
-This repo has 2 independent parts:
-1. [worker.js](https://github.com/UE-DND/fruitionsite/blob/master/worker.js) is the Cloudflare Worker script
-2. everything else is a React app that helps generate the Worker script via a UI.
+This repo has 1 independent parts:
+1. A React app that helps generate the Worker script via a UI.

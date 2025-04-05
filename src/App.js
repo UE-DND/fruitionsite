@@ -9,7 +9,11 @@ import {
   CssBaseline,
   useMediaQuery,
   Grid,
-  Box
+  Box,
+  Switch,
+  FormControlLabel,
+  Tooltip,
+  Typography
 } from "@material-ui/core";
 import code from "./code";
 import "./styles.css";
@@ -48,6 +52,9 @@ export default function App() {
   const [pageDescription, setPageDescription] = useState("");
   const [googleFont, setGoogleFont] = useState("");
   const [customScript, setCustomScript] = useState("");
+  const [hideWatermark, setHideWatermark] = useState(false);
+  const [enablePrettyUrl, setEnablePrettyUrl] = useState(false);
+  const [enableNavAndApi, setEnableNavAndApi] = useState(false);
   const [optional, setOptional] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -112,6 +119,18 @@ export default function App() {
     setCustomScript(e.target.value);
     setCopied(false);
   };
+  const handleHideWatermark = (event) => {
+    setHideWatermark(event.target.checked);
+    setCopied(false);
+  };
+  const handleEnablePrettyUrl = (event) => {
+    setEnablePrettyUrl(event.target.checked);
+    setCopied(false);
+  };
+  const handleEnableNavAndApi = (event) => {
+    setEnableNavAndApi(event.target.checked);
+    setCopied(false);
+  };
   const addSlug = () => {
     setSlugs([...slugs, ["", ""]]);
     setCopied(false);
@@ -156,7 +175,10 @@ export default function App() {
         pageTitle,
         pageDescription,
         googleFont,
-        customScript
+        customScript,
+        hideWatermark,
+        enablePrettyUrl,
+        enableNavAndApi
       })
     : undefined;
   const textarea = useRef("");
@@ -269,6 +291,25 @@ export default function App() {
         </Button>
       </div>
       <Collapse in={optional} timeout="auto" unmountOnExit>
+        <FormControlLabel
+          control={<Switch checked={hideWatermark} onChange={handleHideWatermark} name="hideWatermark" />}
+          label={t.hideNotionWatermarkLabel}
+          style={{ display: 'block', marginBottom: theme.spacing(1) }}
+        />
+        <Tooltip title={<Typography variant="body2">{t.enablePrettyUrlTooltip}</Typography>} arrow placement="right">
+          <FormControlLabel
+            control={<Switch checked={enablePrettyUrl} onChange={handleEnablePrettyUrl} name="enablePrettyUrl" />}
+            label={t.enablePrettyUrlLabel}
+            style={{ display: 'block', marginBottom: theme.spacing(1) }}
+          />
+        </Tooltip>
+        <Tooltip title={<Typography variant="body2">{t.enableNavAndApiTooltip}</Typography>} arrow placement="right">
+          <FormControlLabel
+            control={<Switch checked={enableNavAndApi} onChange={handleEnableNavAndApi} name="enableNavAndApi" />}
+            label={t.enableNavAndApiLabel}
+            style={{ display: 'block', marginBottom: theme.spacing(1) }}
+          />
+        </Tooltip>
         <TextField
           fullWidth
           label={t.pageTitle}
