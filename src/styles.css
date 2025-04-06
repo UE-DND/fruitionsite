@@ -1,5 +1,6 @@
 body {
   background: white;
+  overflow-x: hidden; /* 隐藏横向滚动条 */
 }
 
 .App {

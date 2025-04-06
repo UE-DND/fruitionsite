@@ -27,10 +27,14 @@ const translations = {
     hideNotionWatermarkLabel: "Hide Notion Watermark",
 
     // New setting for history manipulation
-    enablePrettyUrlLabel: "Enable Pretty URLs (Client-side Slugs)",
-    enablePrettyUrlTooltip: "Updates browser URL to show slugs like '/about' after page loads and during navigation. Disable if it causes issues.",
-    enableNavAndApiLabel: "Enable Browser History Nav & API Proxy",
-    enableNavAndApiTooltip: "Handles browser back/forward buttons and proxies API requests. Disable if history navigation or specific Notion features break.",
+    enablePrettyUrlLabel: "Use Friendly Web Addresses",
+    enablePrettyUrlTooltip: "Converts technical page IDs to human-readable addresses (like '/about' instead of long numbers). Disable if it causes any issues.",
+    enableNavAndApiLabel: "Improve Page Navigation and Communication",
+    enableNavAndApiTooltip: "Enhances browsing experience, makes browser back/forward buttons work properly, and optimizes communication with Notion servers. Disable if site features stop working.",
+    
+    // Debug mode setting
+    enableDebugModeLabel: "Enable Debug Mode",
+    enableDebugModeTooltip: "Shows detailed debug messages in the browser console. Useful for troubleshooting, but should be disabled in production.",
 
     // Code display
     generatedCode: "Generated Cloudflare Worker Script",
@@ -39,6 +43,7 @@ const translations = {
     // Tooltips
     switchToLight: "Switch to Light Mode",
     switchToDark: "Switch to Dark Mode",
+    resetToSystemTheme: "Reset to System Theme",
 
     // Errors
     invalidDomain: "Please enter a valid domain",
@@ -71,10 +76,14 @@ const translations = {
     hideNotionWatermarkLabel: "隐藏 Notion 水印",
 
     // New setting for history manipulation
-    enablePrettyUrlLabel: "启用简洁 URL (客户端 Slug)",
-    enablePrettyUrlTooltip: "页面加载和导航时，将浏览器地址栏更新为简洁路径（如 /about）。如果导致问题请禁用。",
-    enableNavAndApiLabel: "启用浏览器历史导航与 API 代理",
-    enableNavAndApiTooltip: "处理浏览器前进/后退按钮并代理 API 请求。如果历史导航或某些 Notion 功能异常，请禁用此项。",
+    enablePrettyUrlLabel: "启用简洁网址",
+    enablePrettyUrlTooltip: "将复杂的页面ID转换为易读的网址(如/aboutus而非一长串数字)。如有问题可禁用此功能。",
+    enableNavAndApiLabel: "启用通信改善",
+    enableNavAndApiTooltip: "增强浏览体验，使浏览器前进、后退按钮正常工作，优化与Notion服务器的通信。如功能异常请禁用。",
+    
+    // Debug mode setting
+    enableDebugModeLabel: "启用调试模式",
+    enableDebugModeTooltip: "在浏览器控制台显示详细的调试信息。对排错有帮助，但生产环境应当禁用。",
 
     // Code display
     generatedCode: "生成的 Cloudflare Worker 脚本",
@@ -83,6 +92,7 @@ const translations = {
     // Tooltips
     switchToLight: "切换到浅色模式",
     switchToDark: "切换到深色模式",
+    resetToSystemTheme: "跟随系统主题",
 
     // Error messages
     invalidDomain: "请输入有效的域名",

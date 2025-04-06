@@ -20,7 +20,31 @@ const PAGE_DESCRIPTION = '';
 const GOOGLE_FONT = '';
   
 /* Step 5: enter any custom scripts you'd like */
-const CUSTOM_SCRIPT = ``;
+const CUSTOM_SCRIPT = `
+// 禁用所有WebSocket连接尝试以避免WebSocket错误
+(function() {
+  // 保存原始WebSocket构造函数的引用
+  const OriginalWebSocket = window.WebSocket;
+  // 重写WebSocket构造函数
+  window.WebSocket = function(url, protocols) {
+    if (url.includes('msgstore') || url.includes('primus') || url.includes('notion.so')) {
+      // 返回一个模拟的WebSocket对象，但不实际建立连接
+      return {
+        url: url,
+        readyState: 3, // CLOSED
+        send: function() {},
+        close: function() {},
+        onopen: null,
+        onclose: null,
+        onerror: null,
+        onmessage: null
+      };
+    }
+    // 对于其他WebSocket连接，使用原始WebSocket
+    return new OriginalWebSocket(url, protocols);
+  };
+})();
+`;
   
 /* Step 6: decide whether to hide Notion watermark (true/false) */
 const HIDE_WATERMARK = false;
@@ -30,6 +54,9 @@ const ENABLE_PRETTY_URL = true;
   
 /* Step 8: enable history navigation and API proxying */
 const ENABLE_NAV_AND_API = true;
+  
+/* Step 9: enable debug mode (to see console logging) */
+const DEBUG_MODE = false;
   
 /* CONFIGURATION ENDS HERE */
   
@@ -100,6 +127,17 @@ async function fetchAndApply(request) {
     return handleOptions(request);
   }
   const url = new URL(request.url);
+
+  // 拦截所有msgstore和primus相关请求
+  if (url.pathname.startsWith('/primus-v8') || url.hostname.includes('msgstore')) {
+    return new Response('', { 
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      }
+    });
+  }
 
   // Handle static/special paths first
   if (url.pathname === '/robots.txt') {
@@ -242,6 +280,35 @@ class BodyRewriter {
     const slugs = [];
     const pages = [];
     let redirected = false;
+    const DEBUG_MODE = ${DEBUG_MODE};
+    
+    // 静默日志函数，只在调试模式才输出
+    function silentLog() {
+      if (DEBUG_MODE) {
+        console.log.apply(console, arguments);
+      }
+    }
+    
+    // 阻止所有WebSocket连接
+    (function() {
+      const OriginalWebSocket = window.WebSocket;
+      window.WebSocket = function(url, protocols) {
+        if (url.includes('msgstore') || url.includes('primus') || url.includes('notion.so')) {
+          return {
+            url: url,
+            readyState: 3, // CLOSED
+            send: function() {},
+            close: function() {},
+            onopen: null,
+            onclose: null,
+            onerror: null,
+            onmessage: null
+          };
+        }
+        return new OriginalWebSocket(url, protocols);
+      };
+    })();
+    
     if (${ENABLE_PRETTY_URL}) {
       // Initialize vars needed for pretty URLs
       const PAGE_TO_SLUG = {};
@@ -262,19 +329,19 @@ class BodyRewriter {
         return location.pathname.slice(1);
       }
       function updateSlug() {
-        console.log('[Fruition Script] updateSlug called.');
-        console.log('[Fruition Script] current location.pathname:', location.pathname);
+        silentLog('[Fruition Script] updateSlug called.');
+        silentLog('[Fruition Script] current location.pathname:', location.pathname);
         const pageId = getPage();
-        console.log('[Fruition Script] extracted pageId:', pageId);
+        silentLog('[Fruition Script] extracted pageId:', pageId);
         // Log the entire map for debugging
-        // console.log('[Fruition Script] PAGE_TO_SLUG map:', PAGE_TO_SLUG);
+        // silentLog('[Fruition Script] PAGE_TO_SLUG map:', PAGE_TO_SLUG);
         const slug = PAGE_TO_SLUG[pageId];
-        console.log('[Fruition Script] found slug:', slug);
+        silentLog('[Fruition Script] found slug:', slug);
         if (slug != null) {
-          console.log('[Fruition Script] Attempting history.replaceState with:', '/' + slug);
+          silentLog('[Fruition Script] Attempting history.replaceState with:', '/' + slug);
           history.replaceState(history.state, '', '/' + slug);
         } else {
-          console.log('[Fruition Script] No slug found for this pageId. URL not changed.');
+          silentLog('[Fruition Script] No slug found for this pageId. URL not changed.');
         }
       }
       // Restore observer creation and start observation
@@ -297,74 +364,142 @@ class BodyRewriter {
       // Keep history rewrites disabled for now
       const replaceState = window.history.replaceState;
       window.history.replaceState = function(state) {
-        // Check for cross-origin attempts
+        // 更全面地检查跨域URL
         try {
           let intendedUrl = arguments[2];
-          if (typeof intendedUrl === 'string' && intendedUrl.startsWith('http')) {
-            const urlObject = new URL(intendedUrl);
-            if (urlObject.origin !== location.origin) {
-              console.warn('[Fruition Script] Blocked replaceState to cross-origin URL:', intendedUrl);
+          if (typeof intendedUrl === 'string') {
+            // 如果是完整URL（以http开头）
+            if (intendedUrl.startsWith('http')) {
+              const urlObject = new URL(intendedUrl);
+              if (urlObject.origin !== location.origin) {
+                silentLog('[Fruition Script] Blocked replaceState to cross-origin URL:', intendedUrl);
+                return;
+              }
+            }
+            // 检查URL是否包含notion.site或notion.so（防止跨域重定向）
+            else if (intendedUrl.includes('notion.site') || intendedUrl.includes('notion.so')) {
+              silentLog('[Fruition Script] Blocked replaceState to Notion URL:', intendedUrl);
               return;
             }
           }
-        } catch (e) { console.error('[Fruition Script] Error checking replaceState URL:', e); }
+        } catch (e) { 
+          silentLog('[Fruition Script] Error checking replaceState URL:', e);
+          return; // 出错时不执行原始replaceState
+        }
 
-        // Original Fruition logic (maybe needs bypass check refinement)
+        // 原始Fruition逻辑
         if (arguments[1] !== 'bypass' && slugs.includes(getSlug())) return;
         return replaceState.apply(window.history, arguments);
       };
 
       const pushState = window.history.pushState;
       window.history.pushState = function(state) {
-        // Check for cross-origin attempts
+        // 更全面地检查跨域URL
         try {
           let intendedUrl = arguments[2];
-          if (typeof intendedUrl === 'string' && intendedUrl.startsWith('http')) {
-            const urlObject = new URL(intendedUrl);
-            if (urlObject.origin !== location.origin) {
-              console.warn('[Fruition Script] Blocked pushState to cross-origin URL:', intendedUrl);
+          if (typeof intendedUrl === 'string') {
+            // 如果是完整URL（以http开头）
+            if (intendedUrl.startsWith('http')) {
+              const urlObject = new URL(intendedUrl);
+              if (urlObject.origin !== location.origin) {
+                silentLog('[Fruition Script] Blocked pushState to cross-origin URL:', intendedUrl);
+                return;
+              }
+            }
+            // 检查URL是否包含notion.site或notion.so（防止跨域重定向）
+            else if (intendedUrl.includes('notion.site') || intendedUrl.includes('notion.so')) {
+              silentLog('[Fruition Script] Blocked pushState to Notion URL:', intendedUrl);
               return;
             }
-          }
-          // Try to map Notion page IDs to slugs
-          else if (typeof intendedUrl === 'string') {
-              const urlObject = new URL(location.protocol + location.host + intendedUrl);
+            // 尝试将Notion页面ID映射到slug
+            else {
+              const urlObject = new URL(location.protocol + '//' + location.host + intendedUrl);
               const id = urlObject.pathname.slice(-32);
               if (pages.includes(id)) {
                 arguments[2] = '/' + PAGE_TO_SLUG[id];
-                console.log('[Fruition Script] Mapped pushState URL to slug:', arguments[2]);
+                silentLog('[Fruition Script] Mapped pushState URL to slug:', arguments[2]);
               }
+            }
           }
-        } catch (e) { console.error('[Fruition Script] Error checking/mapping pushState URL:', e); }
+        } catch (e) { 
+          silentLog('[Fruition Script] Error checking pushState URL:', e); 
+          return; // 出错时不执行原始pushState
+        }
 
         return pushState.apply(window.history, arguments);
       };
     }
-    // Use the variable from the outer 'code' function scope directly
+    // 使用来自外部'code'函数作用域的变量
     if (${ENABLE_NAV_AND_API}) {
-      // Handle browser history navigation (back/forward buttons)
+      // 处理浏览器历史导航（前进/后退按钮）
       const onpopstate = window.onpopstate;
       window.onpopstate = function(event) {
-        // Call original handler first
+        // 首先调用原始处理程序
         if (onpopstate) {
             onpopstate.apply(this, arguments);
         }
-        // After navigation, update the slug based on the potentially changed URL
-        // Check if updateSlug exists before calling (if Pretty URL is disabled)
+        // 导航后，根据可能改变的URL更新slug
+        // 检查updateSlug是否存在（如果禁用了PrettyURL）
         if (typeof updateSlug === 'function') {
             updateSlug();
         } else {
-            console.warn('[Fruition Script] updateSlug function not available in onpopstate');
+            silentLog('[Fruition Script] updateSlug function not available in onpopstate');
         }
       };
 
-      // Handle API proxying (XHR override)
+      // 处理API代理（XHR覆盖）
       const open = window.XMLHttpRequest.prototype.open;
       window.XMLHttpRequest.prototype.open = function() {
+        // 阻止所有msgstore请求
         if (typeof arguments[1] === 'string') {
-          arguments[1] = arguments[1].replace('notebook.uednd.top', 'www.notion.so');
+          if (arguments[1].includes('msgstore') || arguments[1].includes('primus-v8')) {
+            this._blocked = true;
+            return;
+          } else {
+            // 其他请求正常处理
+            arguments[1] = arguments[1].replace('notebook.uednd.top', 'www.notion.so');
+          }
         }
         return open.apply(this, [].slice.call(arguments));
+      };
+      
+      // 覆盖其他XHR方法以确保被阻止的请求不执行
+      const send = window.XMLHttpRequest.prototype.send;
+      window.XMLHttpRequest.prototype.send = function() {
+        if (this._blocked) {
+          // 对于被阻止的请求，模拟成功完成但不实际发送
+          setTimeout(() => {
+            // 模拟一个加载完成的状态
+            Object.defineProperty(this, 'readyState', {value: 4});
+            Object.defineProperty(this, 'status', {value: 200});
+            Object.defineProperty(this, 'response', {value: ''});
+            Object.defineProperty(this, 'responseText', {value: ''});
+            
+            // 触发事件
+            if (typeof this.onreadystatechange === 'function') {
+              this.onreadystatechange();
+            }
+            if (typeof this.onload === 'function') {
+              this.onload();
+            }
+          }, 0);
+          return;
+        }
+        return send.apply(this, arguments);
+      };
+      
+      // 覆盖fetch API以阻止msgstore请求
+      const originalFetch = window.fetch;
+      window.fetch = function(resource, options) {
+        if (typeof resource === 'string' && 
+           (resource.includes('msgstore') || resource.includes('primus-v8'))) {
+          // 返回空响应的promise，但使用blob URL以确保同源
+          return Promise.resolve(new Response(new Blob([], {type: 'application/json'}), {
+            status: 200,
+            headers: {'Content-Type': 'application/json'}
+          }));
+        }
+        return originalFetch.apply(this, arguments);
       };
     }
     </script>`, { html: true });

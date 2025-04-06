@@ -13,13 +13,42 @@ import {
   Switch,
   FormControlLabel,
   Tooltip,
-  Typography
+  Typography,
+  makeStyles
 } from "@material-ui/core";
 import code from "./code";
 import "./styles.css";
 import { useLanguage } from "./i18n/LanguageContext";
 import LanguageSwitcher from "./i18n/LanguageSwitcher";
 import ThemeSwitcher from "./ThemeSwitcher";
+
+// 创建全局样式，防止滚动条导致的布局跳动
+const useStyles = makeStyles(theme => ({
+  '@global': {
+    html: {
+      overflowY: 'scroll', // 始终显示垂直滚动条
+    },
+    '::-webkit-scrollbar': {
+      width: '8px',
+      backgroundColor: theme.palette.background.default,
+    },
+    '::-webkit-scrollbar-thumb': {
+      backgroundColor: theme.palette.divider,
+      borderRadius: '4px',
+    },
+    '::-webkit-scrollbar-thumb:hover': {
+      backgroundColor: theme.palette.action.hover,
+    },
+    // 平衡右侧滚动条宽度，使内容居中
+    body: {
+      paddingRight: 'calc(8px)', // 滚动条宽度
+    },
+    // 控制组件的过渡动画，使其更平滑
+    '.MuiCollapse-container': {
+      transition: 'height 300ms cubic-bezier(0.4, 0, 0.2, 1) 0ms !important',
+    }
+  },
+}));
 
 const DEFAULT_DOMAIN = "";
 const DEFAULT_NOTION_URL =
@@ -45,6 +74,9 @@ function validNotionUrl(url) {
 }
 
 export default function App() {
+  // 应用全局样式
+  const classes = useStyles();
+  
   const [slugs, setSlugs] = useState([]);
   const [myDomain, setMyDomain] = useState("");
   const [notionUrl, setNotionUrl] = useState("");
@@ -55,6 +87,7 @@ export default function App() {
   const [hideWatermark, setHideWatermark] = useState(false);
   const [enablePrettyUrl, setEnablePrettyUrl] = useState(false);
   const [enableNavAndApi, setEnableNavAndApi] = useState(false);
+  const [enableDebugMode, setEnableDebugMode] = useState(false);
   const [optional, setOptional] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -63,6 +96,11 @@ export default function App() {
   // --- Simplified Theme State and Logic --- 
   // Detect system preference
   const prefersDarkMode = useMediaQuery('(prefers-color-scheme: dark)');
+  
+  // 添加一个状态来跟踪用户是否已手动设置了主题
+  const [userThemePreference, setUserThemePreference] = useState(() => {
+    return localStorage.getItem('themeType') !== null;
+  });
   
   // State for the actual theme type being applied (light or dark)
   const [currentThemeType, setCurrentThemeType] = useState(() => {
@@ -73,6 +111,14 @@ export default function App() {
     // Otherwise, follow system preference initially
     return prefersDarkMode ? 'dark' : 'light'; 
   });
+
+  // 监听系统主题变化
+  useEffect(() => {
+    // 只有当用户没有手动设置主题时，才跟随系统主题
+    if (!userThemePreference) {
+      setCurrentThemeType(prefersDarkMode ? 'dark' : 'light');
+    }
+  }, [prefersDarkMode, userThemePreference]);
 
   // Memoize the theme creation based on the currentThemeType
   const theme = useMemo(
@@ -89,7 +135,15 @@ export default function App() {
   const toggleTheme = () => {
     const nextThemeType = currentThemeType === 'light' ? 'dark' : 'light';
     setCurrentThemeType(nextThemeType);
+    setUserThemePreference(true); // 标记用户已手动设置主题
     localStorage.setItem('themeType', nextThemeType); // Save user's choice
+  };
+
+  // 添加重置为系统主题的功能
+  const resetToSystemTheme = () => {
+    localStorage.removeItem('themeType');
+    setUserThemePreference(false);
+    setCurrentThemeType(prefersDarkMode ? 'dark' : 'light');
   };
   // --- End Simplified Theme State and Logic ---
 
@@ -129,6 +183,10 @@ export default function App() {
   };
   const handleEnableNavAndApi = (event) => {
     setEnableNavAndApi(event.target.checked);
+    setCopied(false);
+  };
+  const handleEnableDebugMode = (event) => {
+    setEnableDebugMode(event.target.checked);
     setCopied(false);
   };
   const addSlug = () => {
@@ -178,7 +236,8 @@ export default function App() {
         customScript,
         hideWatermark,
         enablePrettyUrl,
-        enableNavAndApi
+        enableNavAndApi,
+        enableDebugMode
       })
     : undefined;
   const textarea = useRef("");
@@ -310,6 +369,13 @@ export default function App() {
             style={{ display: 'block', marginBottom: theme.spacing(1) }}
           />
         </Tooltip>
+        <Tooltip title={<Typography variant="body2">{t.enableDebugModeTooltip}</Typography>} arrow placement="right">
+          <FormControlLabel
+            control={<Switch checked={enableDebugMode} onChange={handleEnableDebugMode} name="enableDebugMode" />}
+            label={t.enableDebugModeLabel}
+            style={{ display: 'block', marginBottom: theme.spacing(1) }}
+          />
+        </Tooltip>
         <TextField
           fullWidth
           label={t.pageTitle}
@@ -373,7 +439,9 @@ export default function App() {
       >
         <ThemeSwitcher 
           currentThemeType={currentThemeType} 
-          toggleTheme={toggleTheme} 
+          toggleTheme={toggleTheme}
+          resetToSystemTheme={resetToSystemTheme}
+          userThemePreference={userThemePreference}
         />
         <LanguageSwitcher />
       </Box>
