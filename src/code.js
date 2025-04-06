@@ -207,17 +207,13 @@ ${slugs
 
     // Only rewrite successful HTML responses
     const contentType = response.headers.get('content-type');
-    // Return the response directly, without rewriting.
-    // If the page loads now (even if broken), HTMLRewriter is the issue.
-    return response;
-
-    // Original logic (commented out for diagnosis):
-    // if (contentType && contentType.trim().toLowerCase().startsWith('text/html')) {
-    //     return appendJavascript(response, SLUG_TO_PAGE);
-    // } else {
-    //     // Return other proxied responses (e.g., msgstore, images) directly
-    //     return response;
-    // }
+    // Use startsWith after trimming and lowercasing for robustness
+    if (contentType && contentType.trim().toLowerCase().startsWith('text/html')) {
+        return appendJavascript(response, SLUG_TO_PAGE);
+    } else {
+        // Return other proxied responses (e.g., msgstore, images) directly
+        return response;
+    }
   }
   
   class MetaRewriter {
@@ -251,7 +247,9 @@ ${slugs
   class HeadRewriter {
     element(element) {
       if (GOOGLE_FONT !== '') {
-        element.append(\`<link href="https://fonts.googleapis.com/css?family=\${GOOGLE_FONT.replace(' ', '+')}:Regular,Bold,Italic&display=swap" rel="stylesheet">
+        // 确保 GOOGLE_FONT 被视为字符串类型
+        const fontFamily = String(GOOGLE_FONT).replace(' ', '+');
+        element.append(\`<link href="https://fonts.googleapis.com/css?family=\${fontFamily}:Regular,Bold,Italic&display=swap" rel="stylesheet">
         <style>* { font-family: "\${GOOGLE_FONT}" !important; }</style>\`, {
           html: true
         });
@@ -269,30 +267,139 @@ ${slugs
       this.SLUG_TO_PAGE = SLUG_TO_PAGE;
     }
     element(element) {
-      element.append(\`<div style=\"display:none\">Powered by <a href=\"http://fruitionsite.com\">Fruition</a></div>\`, { html: true });
-      element.append(\`<script>\n      const SLUG_TO_PAGE = \${JSON.stringify(this.SLUG_TO_PAGE)};\n      const PAGE_TO_SLUG = {};\n      const slugs = [];
+      element.append(\`<div style="display:none">Powered by <a href="http://fruitionsite.com">Fruition</a></div>\`, { html: true });
+      element.append(\`<script>
+      const SLUG_TO_PAGE = \${JSON.stringify(this.SLUG_TO_PAGE)};
+      const PAGE_TO_SLUG = {};
+      const slugs = [];
       const pages = [];
-      let redirected = false;\n      if (\${enablePrettyUrl}) {\n        function getPage() {\\n        return location.pathname.slice(-32);\\n      }\n      function getSlug() {\\n        return location.pathname.slice(1);\\n      }\n      function updateSlug() {\\n        const slug = PAGE_TO_SLUG[getPage()];\\n        if (slug != null) {\\n          history.replaceState(history.state, '', '/' + slug);\\n        }\\n      }\n      const observer = new MutationObserver(function() {\\n        if (redirected) return;\\n        const nav = document.querySelector('.notion-topbar');
-        const mobileNav = document.querySelector('.notion-topbar-mobile');
-        if (nav && nav.firstChild && nav.firstChild.firstChild
-          || mobileNav && mobileNav.firstChild) {\\n          redirected = true;\\n          updateSlug();\\n          const onpopstate = window.onpopstate;
-          window.onpopstate = function() {
-            onpopstate.apply(this, [].slice.call(arguments));
-            updateSlug();
-          };
-        }\\n      });
-        observer.observe(document.querySelector('#notion-app'), {\\n        childList: true,\\n        subtree: true,\\n      });
-        const replaceState = window.history.replaceState;
-        window.history.replaceState = function(state) {\\n        if (arguments[1] !== 'bypass' && slugs.includes(getSlug())) return;\\n        return replaceState.apply(window.history, arguments);\\n      };
-        const pushState = window.history.pushState;
-        window.history.pushState = function(state) {\\n        const dest = new URL(location.protocol + location.host + arguments[2]);
-        const id = dest.pathname.slice(-32);\\n        if (pages.includes(id)) {\\n          arguments[2] = '/' + PAGE_TO_SLUG[id];\\n        }\\n        return pushState.apply(window.history, arguments);\\n      };
-      }
-    </script>\`, { html: true });
+      let redirected = false;
+      if (${enablePrettyUrl}) {
+        // Initialize vars needed for pretty URLs
+        const PAGE_TO_SLUG = {};
+        const slugs = [];
+        const pages = [];
+        Object.keys(SLUG_TO_PAGE).forEach(slug => {
+          const page = SLUG_TO_PAGE[slug];
+          slugs.push(slug);
+          pages.push(page);
+          PAGE_TO_SLUG[page] = slug;
+        });
 
-      if (CUSTOM_SCRIPT) {
-         element.append(\`<script>\${CUSTOM_SCRIPT}</script>\`, { html: true });
+        // Restore function definitions
+        function getPage() {
+          return location.pathname.slice(-32);
+        }
+        function getSlug() {
+          return location.pathname.slice(1);
+        }
+        function updateSlug() {
+          console.log('[Fruition Script] updateSlug called.');
+          console.log('[Fruition Script] current location.pathname:', location.pathname);
+          const pageId = getPage();
+          console.log('[Fruition Script] extracted pageId:', pageId);
+          // Log the entire map for debugging
+          // console.log('[Fruition Script] PAGE_TO_SLUG map:', PAGE_TO_SLUG);
+          const slug = PAGE_TO_SLUG[pageId];
+          console.log('[Fruition Script] found slug:', slug);
+          if (slug != null) {
+            console.log('[Fruition Script] Attempting history.replaceState with:', '/' + slug);
+            history.replaceState(history.state, '', '/' + slug);
+          } else {
+            console.log('[Fruition Script] No slug found for this pageId. URL not changed.');
+          }
+        }
+        // Restore observer creation and start observation
+        const observer = new MutationObserver(function() {
+          if (redirected) return;
+          const nav = document.querySelector('.notion-topbar');
+          const mobileNav = document.querySelector('.notion-topbar-mobile');
+          if (nav || mobileNav) {
+            redirected = true;
+            updateSlug();
+          }
+        });
+    
+        // DIAGNOSTIC: Temporarily disable observer and history rewrites
+        observer.observe(document.querySelector('#notion-app'), {
+          childList: true,
+          subtree: true,
+        });
+   
+        // Keep history rewrites disabled for now
+        const replaceState = window.history.replaceState;
+        window.history.replaceState = function(state) {
+          // Check for cross-origin attempts
+          try {
+            let intendedUrl = arguments[2];
+            if (typeof intendedUrl === 'string' && intendedUrl.startsWith('http')) {
+              const urlObject = new URL(intendedUrl);
+              if (urlObject.origin !== location.origin) {
+                console.warn('[Fruition Script] Blocked replaceState to cross-origin URL:', intendedUrl);
+                return;
+              }
+            }
+          } catch (e) { console.error('[Fruition Script] Error checking replaceState URL:', e); }
+
+          // Original Fruition logic (maybe needs bypass check refinement)
+          if (arguments[1] !== 'bypass' && slugs.includes(getSlug())) return;
+          return replaceState.apply(window.history, arguments);
+        };
+
+        const pushState = window.history.pushState;
+        window.history.pushState = function(state) {
+          // Check for cross-origin attempts
+          try {
+            let intendedUrl = arguments[2];
+            if (typeof intendedUrl === 'string' && intendedUrl.startsWith('http')) {
+              const urlObject = new URL(intendedUrl);
+              if (urlObject.origin !== location.origin) {
+                console.warn('[Fruition Script] Blocked pushState to cross-origin URL:', intendedUrl);
+                return;
+              }
+            }
+            // Try to map Notion page IDs to slugs
+            else if (typeof intendedUrl === 'string') {
+                const urlObject = new URL(location.protocol + location.host + intendedUrl);
+                const id = urlObject.pathname.slice(-32);
+                if (pages.includes(id)) {
+                  arguments[2] = '/' + PAGE_TO_SLUG[id];
+                  console.log('[Fruition Script] Mapped pushState URL to slug:', arguments[2]);
+                }
+            }
+          } catch (e) { console.error('[Fruition Script] Error checking/mapping pushState URL:', e); }
+
+          return pushState.apply(window.history, arguments);
+        };
       }
+      
+      if (${enableNavAndApi}) {
+        // Handle browser history navigation (back/forward buttons)
+        const onpopstate = window.onpopstate;
+        window.onpopstate = function(event) {
+          // Call original handler first
+          if (onpopstate) {
+            onpopstate.apply(this, arguments);
+          }
+          // After navigation, update the slug based on the potentially changed URL
+          // Check if updateSlug exists before calling (if Pretty URL is disabled)
+          if (typeof updateSlug === 'function') {
+            updateSlug();
+          } else {
+            console.warn('[Fruition Script] updateSlug function not available in onpopstate');
+          }
+        };
+    
+        // Handle API proxying (XHR override)
+        const open = window.XMLHttpRequest.prototype.open;
+        window.XMLHttpRequest.prototype.open = function() {
+          if (typeof arguments[1] === 'string') {
+            arguments[1] = arguments[1].replace('${url}', 'www.notion.so');
+          }
+          return open.apply(this, [].slice.call(arguments));
+        };
+      }
+      </script>\`, { html: true });
     }
   }
   
@@ -303,5 +410,6 @@ ${slugs
       .on('head', new HeadRewriter())
       .on('body', new BodyRewriter(SLUG_TO_PAGE))
       .transform(res);
-  }`;
+  }
+  `;
 }
